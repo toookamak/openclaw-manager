@@ -231,6 +231,8 @@ docker compose up -d --build
 - 新增 Settings 功能：连接状态查看、OpenClaw 版本、告警间隔动态调整
 - 新增 `/cancel` 命令取消待处理操作
 - 新增连接管理菜单：重新发现、重置连接
+- 新增 bot 测试用例（callbacks 和 templates）
+- 交互优化：回调处理点击反馈、错误模板化、结果刷新
 
 ## Roadmap
 
@@ -260,7 +262,7 @@ docker compose up -d --build
 | ✅ | 连接状态通知 | 工具与 OpenClaw 连通后主动发送状态提示 | 包含连接方式、运行状态、当前模型 |
 | ✅ | 菜单扁平化 | /status /service /admin 三个独立命令 | 常规操作2步完成，危险操作二次确认 |
 | ✅ | 回复模板美化 | templates.ts 17个结构化模板 | 键值对/编号列表替代原始代码块 |
-| ✅ | 自动化测试 | Jest 框架，81 个测试用例 | 覆盖 parser/repos/services |
+| ✅ | 自动化测试 | Jest 框架，83 个测试用例 | 覆盖 parser/repos/services/bot |
 | ⬜ | 自动化测试 | 单元测试 + 集成测试 | |
 | ⬜ | 备份定时任务 | 支持通过 Bot 配置自动备份周期 | |
 | ⬜ | 多语言 | 中/英文切换 | |
