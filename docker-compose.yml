@@ -1,0 +1,10 @@
+services:
+  openclaw-manager:
+    build: .
+    container_name: openclaw-manager
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
