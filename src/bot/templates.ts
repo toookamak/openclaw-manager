@@ -1,5 +1,4 @@
 import { InlineKeyboard } from 'grammy';
-import { formatOutput } from './formatters';
 
 const TRUNCATE = 3500;
 
@@ -15,6 +14,97 @@ function codeEmoji(code: number): string {
   return code === 0 ? '✅' : '❌';
 }
 
+function extractKeyValue(raw: string, key: string): string | undefined {
+  const regex = new RegExp(`${key}[:\\s=]+(.+)`, 'i');
+  const match = raw.match(regex);
+  return match ? match[1].trim() : undefined;
+}
+
+function cleanOutput(raw: string): string {
+  if (!raw || raw.trim() === '') return '(无输出)';
+  let cleaned = raw.trim();
+  
+  // Remove ALL markdown code block markers
+  cleaned = cleaned.replace(/```[a-zA-Z]*\s*\n?/g, '');
+  cleaned = cleaned.replace(/\n?\s*```/g, '');
+  cleaned = cleaned.trim();
+  
+  // Try to parse as JSON and convert to key-value format
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      const lines: string[] = [];
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'object') {
+          lines.push(`${key}: ${JSON.stringify(value)}`);
+        } else {
+          lines.push(`${key}: ${value}`);
+        }
+      }
+      return lines.join('\n');
+    }
+  } catch {
+    // Not JSON, continue with normal processing
+  }
+  
+  return cleaned || '(无输出)';
+}
+
+function formatAsList(raw: string): string {
+  const cleaned = cleanOutput(raw);
+  if (cleaned === '(无输出)') return cleaned;
+  
+  const lines = cleaned.split('\n').filter(l => l.trim());
+  if (lines.length === 0) return '(无输出)';
+  
+  // Check if majority of lines are key-value pairs
+  let kvCount = 0;
+  for (const line of lines) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx > 0 && colonIdx < 40) {
+      const key = line.slice(0, colonIdx).trim();
+      const val = line.slice(colonIdx + 1).trim();
+      if (key && val && key.length < 40 && !key.includes('\n')) {
+        kvCount++;
+      }
+    }
+  }
+  
+  // If more than 40% are key-value pairs, format them nicely
+  if (kvCount > lines.length * 0.4) {
+    return lines.map(line => {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx > 0 && colonIdx < 40) {
+        const key = line.slice(0, colonIdx).trim();
+        const val = line.slice(colonIdx + 1).trim();
+        if (key && val && key.length < 40) {
+          return `${key}: ${val}`;
+        }
+      }
+      return line;
+    }).join('\n');
+  }
+  
+  // For non-key-value output, just return truncated
+  return truncate(cleaned);
+}
+
+function remainingLines(formatted: string, hiddenKeys: string[]): string {
+  if (formatted === '(无输出)') return formatted;
+  const hidden = new Set(hiddenKeys.map(key => key.toLowerCase()));
+  const lines = formatted
+    .split('\n')
+    .map(line => line.trimEnd())
+    .filter(line => {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx <= 0) return line.trim() !== '';
+      const key = line.slice(0, colonIdx).trim().toLowerCase();
+      return !hidden.has(key);
+    });
+
+  return lines.length > 0 ? truncate(lines.join('\n')) : '(无输出)';
+}
+
 export const templates = {
   statusOverview(
     running: boolean,
@@ -22,17 +112,32 @@ export const templates = {
     uptime?: string,
     raw?: string
   ): { text: string; keyboard: InlineKeyboard } {
-    let text = `**状态概览**\n\n`;
+    let text = '**状态概览**\n\n';
     text += `运行状态: ${statusEmoji(running)}\n`;
     if (version) text += `版本: ${version}\n`;
     if (uptime) text += `运行时长: ${uptime}\n`;
-    if (raw && !version && !uptime) {
-      text += `\n${truncate(raw)}`;
+    if (raw) {
+      const pid = extractKeyValue(raw, 'pid');
+      const resolvedVersion = version ?? extractKeyValue(raw, 'version');
+      const resolvedUptime = uptime ?? extractKeyValue(raw, 'uptime');
+      if (pid) text += `PID: ${pid}\n`;
+      if (!version && resolvedVersion) text += `版本: ${resolvedVersion}\n`;
+      if (!uptime && resolvedUptime) text += `运行时长: ${resolvedUptime}\n`;
+
+      const extra = remainingLines(formatAsList(raw), [
+        ...(resolvedVersion ? ['version'] : []),
+        ...(resolvedUptime ? ['uptime'] : []),
+        ...(pid ? ['pid'] : []),
+      ]);
+      if (extra !== '(无输出)') {
+        text += `\n${extra}`;
+      }
     }
     const keyboard = new InlineKeyboard()
       .text('概览', 'status:run:overview')
       .text('完整', 'status:run:full').row()
       .text('深度', 'status:run:deep').row()
+      .text('刷新', 'status:run:overview').row()
       .text('返回', 'menu:open:status-view').row();
     return { text, keyboard };
   },
@@ -42,11 +147,21 @@ export const templates = {
     output: string
   ): { text: string; keyboard: InlineKeyboard } {
     const emoji = codeEmoji(code);
-    const text = `**Gateway 健康**\n\n状态: ${emoji} ${code === 0 ? '正常' : '异常'}\n\n${truncate(output)}`;
+    const respTime = extractKeyValue(output, 'response') || extractKeyValue(output, 'latency');
+    let text = `**Gateway 健康**\n\n状态: ${emoji} ${code === 0 ? '正常' : '异常'}`;
+    if (respTime) text += `\n响应时间: ${respTime}`;
+    const formatted = formatAsList(output);
+    const extra = respTime
+      ? remainingLines(formatted, ['response', 'latency'])
+      : formatted;
+    if (extra !== '(无输出)') {
+      text += `\n\n${extra}`;
+    }
     const keyboard = new InlineKeyboard()
       .text('Gateway 健康', 'health:run:gateway')
       .text('全量健康', 'health:run:full').row()
       .text('最近异常', 'health:run:errors').row()
+      .text('刷新', 'health:run:gateway').row()
       .text('返回', 'menu:open:status-view').row();
     return { text, keyboard };
   },
@@ -56,11 +171,12 @@ export const templates = {
     output: string
   ): { text: string; keyboard: InlineKeyboard } {
     const emoji = codeEmoji(code);
-    const text = `**全量健康检查**\n\n状态: ${emoji} ${code === 0 ? '正常' : '异常'}\n\n${truncate(output)}`;
+    const text = `**全量健康检查**\n\n状态: ${emoji} ${code === 0 ? '正常' : '异常'}\n\n${formatAsList(output)}`;
     const keyboard = new InlineKeyboard()
       .text('Gateway 健康', 'health:run:gateway')
       .text('全量健康', 'health:run:full').row()
       .text('最近异常', 'health:run:errors').row()
+      .text('刷新', 'health:run:full').row()
       .text('返回', 'menu:open:status-view').row();
     return { text, keyboard };
   },
@@ -77,6 +193,7 @@ export const templates = {
     const keyboard = new InlineKeyboard()
       .text('最近日志', 'logs:run:recent')
       .text('错误摘要', 'logs:run:errors').row()
+      .text('刷新', 'logs:run:errors').row()
       .text('返回', 'menu:open:status-view').row();
     return { text, keyboard };
   },
@@ -87,7 +204,7 @@ export const templates = {
     output: string
   ): { text: string; keyboard: InlineKeyboard } {
     const emoji = codeEmoji(code);
-    const text = `**${title}**\n\n状态: ${emoji} ${code === 0 ? '连通' : '异常'}\n\n${truncate(output)}`;
+    const text = `**${title}**\n\n状态: ${emoji} ${code === 0 ? '连通' : '异常'}\n\n${formatAsList(output)}`;
     const keyboard = new InlineKeyboard()
       .text('通道连通性', 'conn:run:channels')
       .text('Provider', 'conn:run:provider').row()
@@ -99,7 +216,16 @@ export const templates = {
   modelInfo(
     output: string
   ): { text: string; keyboard: InlineKeyboard } {
-    const text = `**当前模型**\n\n${truncate(output)}`;
+    const model = extractKeyValue(output, 'model');
+    const provider = extractKeyValue(output, 'provider');
+    const status = extractKeyValue(output, 'status');
+    let text = '**当前模型**\n\n';
+    if (model) text += `模型: ${model}\n`;
+    if (provider) text += `Provider: ${provider}\n`;
+    if (status) text += `状态: ${status}\n`;
+    if (!model && !provider && !status) {
+      text += formatAsList(output);
+    }
     const keyboard = new InlineKeyboard()
       .text('当前模型', 'model:run:current')
       .text('可用模型', 'model:run:list').row()
@@ -124,14 +250,14 @@ export const templates = {
       keyboard.text(models[i], `model:confirm:set:${models[i]}`);
       if ((i + 1) % 2 === 0) keyboard.row();
     }
-    keyboard.row().text('返回', 'menu:open:model');
+    keyboard.row().text('返回', 'menu:open:service-control');
     return { text, keyboard };
   },
 
   cronStatus(
     output: string
   ): { text: string; keyboard: InlineKeyboard } {
-    const text = `**定时任务状态**\n\n${truncate(output)}`;
+    const text = `**定时任务状态**\n\n${formatAsList(output)}`;
     const keyboard = new InlineKeyboard()
       .text('任务状态', 'cron:run:status')
       .text('任务列表', 'cron:run:list').row()
@@ -156,7 +282,7 @@ export const templates = {
       const state = job.enabled ? '开' : '关';
       keyboard.text(`[${state}] ${job.name}`, `cron:menu:${job.id}`).row();
     }
-    keyboard.text('返回', 'menu:open:cron').row();
+    keyboard.text('返回', 'menu:open:service-control').row();
     return { text, keyboard };
   },
 
@@ -169,7 +295,7 @@ export const templates = {
       .text('禁用', `cron:confirm:disable:${jobId}`).row()
       .text('立即执行', `cron:confirm:run:${jobId}`).row()
       .text('最近运行', `cron:run:lastrun:${jobId}`).row()
-      .text('返回', 'menu:open:cron').row();
+      .text('返回', 'menu:open:service-control').row();
     return { text, keyboard };
   },
 
@@ -189,7 +315,7 @@ export const templates = {
       const label = archive.length > 25 ? archive.slice(0, 25) + '…' : archive;
       keyboard.text(label, `backup:menu:${encodeURIComponent(archive)}`).row();
     }
-    keyboard.text('返回', 'menu:open:backup').row();
+    keyboard.text('返回', 'menu:open:service-control').row();
     return { text, keyboard };
   },
 
@@ -236,7 +362,13 @@ export const templates = {
   settingsConfig(
     output: string
   ): { text: string; keyboard: InlineKeyboard } {
-    const text = `**配置摘要**\n\n${truncate(output)}`;
+    const configFile = extractKeyValue(output, 'file') || extractKeyValue(output, 'path');
+    let text = '**配置摘要**\n\n';
+    if (configFile) {
+      text += `配置文件: ${configFile}\n`;
+    } else {
+      text += formatAsList(output);
+    }
     const keyboard = new InlineKeyboard()
       .text('配置摘要', 'settings:run:config')
       .text('状态图标', 'settings:run:emoji').row()
@@ -251,7 +383,7 @@ export const templates = {
     profileType: string,
     details: string
   ): { text: string; keyboard: InlineKeyboard } {
-    const text = `**连接状态**\n\n连接方式: ${profileType}\n\n${truncate(details)}`;
+    const text = `**连接状态**\n\n连接方式: ${profileType}\n连接详情: ${details}`;
     const keyboard = new InlineKeyboard()
       .text('重新发现', 'connect:rediscover')
       .text('重置连接', 'connect:reset').row()
@@ -317,10 +449,23 @@ export const templates = {
     output: string,
     returnMenu: string
   ): { text: string; keyboard: InlineKeyboard } {
+    return this.resultWithKeyboard(
+      title,
+      code,
+      output,
+      new InlineKeyboard().text('返回', `menu:open:${returnMenu}`).row()
+    );
+  },
+
+  resultWithKeyboard(
+    title: string,
+    code: number,
+    output: string,
+    keyboard: InlineKeyboard
+  ): { text: string; keyboard: InlineKeyboard } {
     const emoji = codeEmoji(code);
-    const text = `**${title}**\n\n状态: ${emoji} ${code === 0 ? '成功' : '失败'}\n\n${truncate(output)}`;
-    const keyboard = new InlineKeyboard()
-      .text('返回', `menu:open:${returnMenu}`).row();
+    const formatted = formatAsList(output);
+    const text = `**${title}**\n\n状态: ${emoji} ${code === 0 ? '成功' : '失败'}\n\n${formatted}`;
     return { text, keyboard };
   },
 

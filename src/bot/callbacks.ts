@@ -2,6 +2,7 @@ import { Bot } from 'grammy';
 import { BotContext } from '../types/bot';
 import { config } from '../config/env';
 import { menus } from './menus';
+import { templates } from './templates';
 import { statusService } from '../services/status-service';
 import { healthService } from '../services/health-service';
 import { modelService } from '../services/model-service';
@@ -44,6 +45,11 @@ async function replyResult(ctx: BotContext, result: { text: string; keyboard: an
   } catch {
     await ctx.reply(result.text, { parse_mode: 'Markdown', reply_markup: result.keyboard });
   }
+}
+
+function actionResult(title: string, code: number, output: string, keyboard: any) {
+  const detail = code === 0 ? output : friendlyError(code, output);
+  return templates.resultWithKeyboard(title, code, detail, keyboard);
 }
 
 async function ack(ctx: BotContext, text = '处理中...'): Promise<void> {
@@ -138,8 +144,7 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.modelsSet(model);
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'model:set', model, result, result === 'failed' ? res.output : null);
-    const text = result === 'success' ? `✅ 已切换模型: ${model}` : `❌ 切换失败\n\n${friendlyError(res.code, res.output)}`;
-    await reply(ctx, text, menus.modelMenu());
+    await replyResult(ctx, actionResult('切换模型', res.code, res.output, menus.modelMenu()));
   });
 
   bot.callbackQuery(/^settings:run:(.+)$/, async (ctx: BotContext) => {
@@ -224,8 +229,7 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.doctorRepair();
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'doctor:repair', null, result, result === 'failed' ? res.output : null);
-    const text = result === 'success' ? `✅ Doctor 修复成功\n\n${res.output}` : `❌ Doctor 修复失败\n\n${friendlyError(res.code, res.output)}`;
-    await reply(ctx, text, menus.doctorMenu());
+    await replyResult(ctx, actionResult('Doctor 修复', res.code, res.output, menus.doctorMenu()));
   });
 
   bot.callbackQuery(/^cron:run:(.+)$/, async (ctx: BotContext) => {
@@ -287,8 +291,12 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     }
     const result = code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), `cron:${action}`, jobId, result, result === 'failed' ? output : null);
-    const text = result === 'success' ? output : friendlyError(code, output);
-    await reply(ctx, text, menus.cronJobMenu(jobId));
+    const title = action === 'enable'
+      ? `启用任务 ${jobId}`
+      : action === 'disable'
+        ? `禁用任务 ${jobId}`
+        : `执行任务 ${jobId}`;
+    await replyResult(ctx, actionResult(title, code, output, menus.cronJobMenu(jobId)));
   });
 
   bot.callbackQuery(/^cron:run:lastrun:(.+)$/, async (ctx: BotContext) => {
@@ -379,8 +387,7 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.backupRestore(archive);
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:restore', archive, result, result === 'failed' ? res.output : null);
-    const text = result === 'success' ? `✅ 备份恢复成功\n\n${res.output}` : `❌ 备份恢复失败\n\n${friendlyError(res.code, res.output)}`;
-    await reply(ctx, text, menus.backupMenu());
+    await replyResult(ctx, actionResult(`恢复备份 ${archive}`, res.code, res.output, menus.backupMenu()));
   });
 
   bot.callbackQuery(/^backup:delete:(.+)$/, async (ctx: BotContext) => {
@@ -393,8 +400,7 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.backupDelete(archive);
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:delete', archive, result, result === 'failed' ? res.output : null);
-    const text = result === 'success' ? `✅ 备份删除成功\n\n${res.output}` : `❌ 备份删除失败\n\n${friendlyError(res.code, res.output)}`;
-    await reply(ctx, text, menus.backupMenu());
+    await replyResult(ctx, actionResult(`删除备份 ${archive}`, res.code, res.output, menus.backupMenu()));
   });
 
   bot.callbackQuery(/^acl:run:(.+)$/, async (ctx: BotContext) => {
@@ -538,8 +544,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     }
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), `restart:${target}`, null, result, result === 'failed' ? res.output : null);
-    const text = result === 'success' ? `✅ 重启成功\n\n${res.output}` : `❌ 重启失败\n\n${friendlyError(res.code, res.output)}`;
-    await reply(ctx, text, menus.restartMenu());
+    const title = target === 'gateway' ? '重启 Gateway' : '重启 OpenClaw';
+    await replyResult(ctx, actionResult(title, res.code, res.output, menus.restartMenu()));
   });
 
   bot.callbackQuery(/^connect:setup:(.+)$/, async (ctx: BotContext) => {
@@ -740,8 +746,8 @@ OpenClaw 版本: 无法获取
       const res = await openclawCommands.backupRestore(text);
       const result = res.code === 0 ? 'success' : 'failed';
       auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:restore', text, result, result === 'failed' ? res.output : null);
-      const msg = result === 'success' ? `✅ 备份恢复成功\n\n${res.output}` : `❌ 备份恢复失败\n\n${friendlyError(res.code, res.output)}`;
-      await ctx.reply(msg, { reply_markup: menus.backupMenu(), parse_mode: 'Markdown' });
+      const restoreResult = actionResult(`恢复备份 ${text}`, res.code, res.output, menus.backupMenu());
+      await ctx.reply(restoreResult.text, { reply_markup: restoreResult.keyboard, parse_mode: 'Markdown' });
       return;
     }
 
