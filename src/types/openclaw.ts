@@ -4,6 +4,36 @@ export interface CliResult {
   stderr: string;
 }
 
+export type BackendKind = 'local-cli' | 'docker-cli' | 'http-api';
+
+export interface LocalCliConfig {
+  type: 'local-cli';
+  command?: string;
+}
+
+export interface DockerCliConfig {
+  type: 'docker-cli';
+  container: string;
+}
+
+export interface HttpApiConfig {
+  type: 'http-api';
+  baseUrl: string;
+}
+
+export type ConnectionProfile = LocalCliConfig | DockerCliConfig | HttpApiConfig;
+
+export interface DiscoveryResult {
+  profile: ConnectionProfile;
+  label: string;
+}
+
+export interface OpenClawExecResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
 export interface OpenClawStatus {
   running: boolean;
   version?: string;

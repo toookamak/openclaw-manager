@@ -26,7 +26,11 @@ function optionalNum(key: string, fallback: number): number {
 
 export const config = {
   botToken: required('BOT_TOKEN'),
-  adminTelegramId: BigInt(required('ADMIN_TELEGRAM_ID')),
+  adminTelegramId: BigInt(optional('ADMIN_TELEGRAM_ID', optional('ADMIN_TELEGRAM_IDS', '0')).split(',')[0].trim()),
+  adminTelegramIds: (() => {
+    const ids = optional('ADMIN_TELEGRAM_IDS', '') || optional('ADMIN_TELEGRAM_ID', '');
+    return ids.split(',').map(s => BigInt(s.trim())).filter(id => id > 0n);
+  })(),
   tz: optional('TZ', 'Asia/Shanghai'),
   dataDir: resolve(optional('DATA_DIR', '/app/data')),
   stateEmojiEnabled: optionalBool('STATE_EMOJI_ENABLED', true),

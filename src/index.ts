@@ -7,12 +7,23 @@ import { registerCommands } from './bot/commands';
 import { registerCallbacks } from './bot/callbacks';
 import { initAlertService, runAlertCheck } from './services/alert-service';
 import { initApprovalService } from './services/approval-service';
-import { checkCliExists, detectDoctorRepairArg } from './openclaw/detect';
+import { connectionService } from './services/connection-service';
+import { detectDoctorRepairArg } from './openclaw/detect';
+import { settingsService } from './services/settings-service';
 
 const logger = pino({ name: 'openclaw-manager' });
 
 function initialSession(): SessionData {
   return {};
+}
+
+function scheduleNextCheck(): void {
+  const interval = settingsService.getAlertInterval() * 1000;
+  setTimeout(() => {
+    runAlertCheck()
+      .catch(err => logger.error({ err }, 'Alert check failed'))
+      .finally(() => scheduleNextCheck());
+  }, interval);
 }
 
 async function main(): Promise<void> {
@@ -26,14 +37,24 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const cliExists = await checkCliExists();
-  if (!cliExists) {
-    logger.error('openclaw CLI not found in PATH or OPENCLAW_BINARY');
-    process.exit(1);
+  await connectionService.init();
+
+  if (!connectionService.hasConnection()) {
+    logger.info('No saved connection, attempting auto-discovery...');
+    const result = await connectionService.autoDiscoverAndConnect();
+    if (result.success) {
+      logger.info({ label: result.label }, 'Auto-discovery successful');
+    } else {
+      logger.warn('Auto-discovery failed, bot will start without connection');
+    }
   }
 
-  logger.info('openclaw CLI found');
-  await detectDoctorRepairArg();
+  if (connectionService.hasConnection()) {
+    const profile = connectionService.getProfile();
+    if (profile?.type === 'local-cli') {
+      await detectDoctorRepairArg();
+    }
+  }
 
   const bot = new Bot<BotContext>(config.botToken);
   bot.use(session({ initial: initialSession }));
@@ -48,9 +69,7 @@ async function main(): Promise<void> {
     logger.error({ err: err.error }, 'Bot error');
   });
 
-  setInterval(() => {
-    runAlertCheck().catch(err => logger.error({ err }, 'Alert check failed'));
-  }, config.alertCheckIntervalSec * 1000);
+  scheduleNextCheck();
 
   logger.info('Bot starting...');
   bot.start({

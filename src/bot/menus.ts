@@ -3,17 +3,37 @@ import { InlineKeyboard } from 'grammy';
 export const menus = {
   mainMenu(): InlineKeyboard {
     return new InlineKeyboard()
+      .text('状态查看', 'menu:open:status-view')
+      .text('服务控制', 'menu:open:service-control').row()
+      .text('管理授权', 'menu:open:management').row()
+      .text('连接管理', 'menu:open:connection').row();
+  },
+
+  statusViewMenu(): InlineKeyboard {
+    return new InlineKeyboard()
       .text('状态', 'menu:open:status')
       .text('健康检查', 'menu:open:health').row()
-      .text('模型', 'menu:open:model')
-      .text('设置', 'menu:open:settings').row()
       .text('连通性', 'menu:open:connectivity')
+      .text('日志', 'menu:open:logs').row()
+      .text('返回', 'menu:open:main').row();
+  },
+
+  serviceControlMenu(): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('模型管理', 'menu:open:model')
       .text('Doctor', 'menu:open:doctor').row()
       .text('定时任务', 'menu:open:cron')
-      .text('日志', 'menu:open:logs').row()
-      .text('备份', 'menu:open:backup')
+      .text('备份', 'menu:open:backup').row()
+      .text('重启', 'menu:open:restart').row()
+      .text('返回', 'menu:open:main').row();
+  },
+
+  managementMenu(): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('系统设置', 'menu:open:settings')
       .text('访问控制', 'menu:open:acl').row()
-      .text('重启', 'menu:open:restart').row();
+      .text('审计日志', 'menu:open:audit').row()
+      .text('返回', 'menu:open:main').row();
   },
 
   statusMenu(): InlineKeyboard {
@@ -21,7 +41,7 @@ export const menus = {
       .text('概览', 'status:run:overview')
       .text('完整', 'status:run:full').row()
       .text('深度', 'status:run:deep').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:status-view').row();
   },
 
   healthMenu(): InlineKeyboard {
@@ -29,7 +49,7 @@ export const menus = {
       .text('Gateway 健康', 'health:run:gateway')
       .text('全量健康', 'health:run:full').row()
       .text('最近异常', 'health:run:errors').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:status-view').row();
   },
 
   modelMenu(): InlineKeyboard {
@@ -37,14 +57,17 @@ export const menus = {
       .text('当前模型', 'model:run:current')
       .text('可用模型', 'model:run:list').row()
       .text('切换默认模型', 'model:run:set').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:service-control').row();
   },
 
   settingsMenu(): InlineKeyboard {
     return new InlineKeyboard()
       .text('配置摘要', 'settings:run:config')
       .text('状态图标开关', 'settings:run:emoji').row()
-      .text('返回', 'menu:open:main').row();
+      .text('连接状态', 'settings:run:connection')
+      .text('告警间隔', 'settings:run:alert_interval').row()
+      .text('OpenClaw 版本', 'settings:run:version').row()
+      .text('返回', 'menu:open:management').row();
   },
 
   connectivityMenu(): InlineKeyboard {
@@ -52,21 +75,21 @@ export const menus = {
       .text('通道连通性', 'conn:run:channels')
       .text('Provider 连通性', 'conn:run:provider').row()
       .text('Usage 状态', 'conn:run:usage').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:status-view').row();
   },
 
   doctorMenu(): InlineKeyboard {
     return new InlineKeyboard()
       .text('诊断', 'doctor:run:diagnose')
       .text('自动修复', 'doctor:run:repair_confirm').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:service-control').row();
   },
 
   cronMenu(): InlineKeyboard {
     return new InlineKeyboard()
       .text('任务状态', 'cron:run:status')
       .text('任务列表', 'cron:run:list').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:service-control').row();
   },
 
   cronJobsMenu(jobs: Array<{ id: string; name: string; enabled: boolean }>): InlineKeyboard {
@@ -85,21 +108,39 @@ export const menus = {
       .text('禁用', `cron:confirm:disable:${jobId}`).row()
       .text('立即执行', `cron:confirm:run:${jobId}`).row()
       .text('最近运行', `cron:run:lastrun:${jobId}`).row()
-      .text('返回', 'cron:run:list').row();
+      .text('返回', 'menu:open:cron').row();
   },
 
   logsMenu(): InlineKeyboard {
     return new InlineKeyboard()
       .text('最近日志', 'logs:run:recent')
       .text('错误摘要', 'logs:run:errors').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:status-view').row();
   },
 
   backupMenu(): InlineKeyboard {
     return new InlineKeyboard()
       .text('创建备份', 'backup:run:create')
       .text('备份列表', 'backup:run:list').row()
-      .text('返回', 'menu:open:main').row();
+      .text('恢复备份', 'backup:run:restore').row()
+      .text('返回', 'menu:open:service-control').row();
+  },
+
+  backupListMenu(archives: string[]): InlineKeyboard {
+    const kb = new InlineKeyboard();
+    for (const archive of archives.slice(0, 10)) {
+      kb.text(archive.length > 25 ? archive.slice(0, 25) + '…' : archive, `backup:menu:${encodeURIComponent(archive)}`).row();
+    }
+    kb.text('返回', 'menu:open:backup').row();
+    return kb;
+  },
+
+  backupItemMenu(archive: string): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('校验', `backup:verify:${encodeURIComponent(archive)}`)
+      .text('恢复', `backup:run:restore:${encodeURIComponent(archive)}`).row()
+      .text('删除', `backup:delete:${encodeURIComponent(archive)}`).row()
+      .text('返回', 'backup:run:list').row();
   },
 
   aclMenu(): InlineKeyboard {
@@ -112,20 +153,20 @@ export const menus = {
       .text('白名单列表', 'acl:run:whitelist').row()
       .text('允许当前群', 'acl:run:allow')
       .text('移除当前群', 'acl:run:remove').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:management').row();
   },
 
   restartMenu(): InlineKeyboard {
     return new InlineKeyboard()
       .text('重启 OpenClaw', 'restart:confirm:openclaw')
       .text('重启 Gateway', 'restart:confirm:gateway').row()
-      .text('返回', 'menu:open:main').row();
+      .text('返回', 'menu:open:service-control').row();
   },
 
-  confirmMenu(scope: string, action: string, arg: string): InlineKeyboard {
+  confirmMenu(confirmData: string, cancelData: string): InlineKeyboard {
     return new InlineKeyboard()
-      .text('确认执行', `${scope}:${action}:${arg}`)
-      .text('取消', 'menu:open:main').row();
+      .text('确认执行', confirmData)
+      .text('取消', cancelData).row();
   },
 
   modelListMenu(models: string[]): InlineKeyboard {
@@ -148,8 +189,32 @@ export const menus = {
     return kb;
   },
 
+  connectionSetupMenu(): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('本机', 'connect:setup:local')
+      .text('Docker', 'connect:setup:docker').row()
+      .text('HTTP 地址', 'connect:setup:http').row();
+  },
+
+  connectionStatusMenu(): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('重新发现', 'connect:rediscover')
+      .text('重置连接', 'connect:reset').row()
+      .text('返回', 'menu:open:main').row();
+  },
+
+  auditMenu(): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('最近操作', 'audit:run:recent')
+      .text('失败记录', 'audit:run:errors').row()
+      .text('返回', 'menu:open:management').row();
+  },
+
   getMenuForScope(scope: string): InlineKeyboard {
     switch (scope) {
+      case 'status-view': return this.statusViewMenu();
+      case 'service-control': return this.serviceControlMenu();
+      case 'management': return this.managementMenu();
       case 'status': return this.statusMenu();
       case 'health': return this.healthMenu();
       case 'model': return this.modelMenu();
@@ -161,7 +226,32 @@ export const menus = {
       case 'backup': return this.backupMenu();
       case 'acl': return this.aclMenu();
       case 'restart': return this.restartMenu();
+      case 'connection': return this.connectionStatusMenu();
+      case 'audit': return this.auditMenu();
       default: return this.mainMenu();
+    }
+  },
+
+  getTitleForScope(scope: string): string {
+    switch (scope) {
+      case 'main': return '菜单模式';
+      case 'status-view': return '状态查看';
+      case 'service-control': return '服务控制';
+      case 'management': return '管理授权';
+      case 'status': return '状态';
+      case 'health': return '健康检查';
+      case 'model': return '模型管理';
+      case 'settings': return '系统设置';
+      case 'connectivity': return '连通性';
+      case 'doctor': return 'Doctor';
+      case 'cron': return '定时任务';
+      case 'logs': return '日志';
+      case 'backup': return '备份';
+      case 'acl': return '访问控制';
+      case 'restart': return '重启';
+      case 'connection': return '连接管理';
+      case 'audit': return '审计日志';
+      default: return '菜单';
     }
   },
 };

@@ -1,14 +1,12 @@
-import { execCli } from './cli';
-
-export async function checkCliExists(): Promise<boolean> {
-  const result = await execCli(['--version'], 5000);
-  return result.code === 0;
-}
+import { connectionService } from '../services/connection-service';
 
 export let doctorRepairArg = '--repair';
 
 export async function detectDoctorRepairArg(): Promise<string> {
-  const result = await execCli(['doctor', '--help'], 5000);
+  const backend = connectionService.getBackend();
+  if (!backend) return doctorRepairArg;
+
+  const result = await backend.exec(['doctor', '--help'], 5000);
   const output = (result.stdout + result.stderr).toLowerCase();
 
   if (output.includes('--repair')) {

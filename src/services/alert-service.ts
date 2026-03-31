@@ -25,19 +25,23 @@ export function initAlertService(bot: Bot<BotContext>): void {
 
 async function sendAlert(message: string): Promise<void> {
   if (!botInstance) return;
-  try {
-    await botInstance.api.sendMessage(Number(config.adminTelegramId), `**告警**\n\n${message}`, { parse_mode: 'Markdown' });
-  } catch (err) {
-    logger.error({ err }, 'Failed to send alert');
+  for (const adminId of config.adminTelegramIds) {
+    try {
+      await botInstance.api.sendMessage(Number(adminId), `**告警**\n\n${message}`, { parse_mode: 'Markdown' });
+    } catch (err) {
+      logger.error({ err, adminId }, 'Failed to send alert');
+    }
   }
 }
 
 async function sendRecovery(message: string): Promise<void> {
   if (!botInstance) return;
-  try {
-    await botInstance.api.sendMessage(Number(config.adminTelegramId), `**恢复**\n\n${message}`, { parse_mode: 'Markdown' });
-  } catch (err) {
-    logger.error({ err }, 'Failed to send recovery');
+  for (const adminId of config.adminTelegramIds) {
+    try {
+      await botInstance.api.sendMessage(Number(adminId), `**恢复**\n\n${message}`, { parse_mode: 'Markdown' });
+    } catch (err) {
+      logger.error({ err, adminId }, 'Failed to send recovery');
+    }
   }
 }
 
