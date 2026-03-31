@@ -38,6 +38,7 @@ export interface OpenClawStatus {
   running: boolean;
   version?: string;
   uptime?: string;
+  pid?: string;
   raw: string;
 }
 

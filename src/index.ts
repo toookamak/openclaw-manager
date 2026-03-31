@@ -10,6 +10,7 @@ import { initApprovalService } from './services/approval-service';
 import { connectionService } from './services/connection-service';
 import { detectDoctorRepairArg } from './openclaw/detect';
 import { settingsService } from './services/settings-service';
+import { sendConnectionStatus } from './services/notification-service';
 
 const logger = pino({ name: 'openclaw-manager' });
 
@@ -39,14 +40,18 @@ async function main(): Promise<void> {
 
   await connectionService.init();
 
+  let connectionEstablished = false;
   if (!connectionService.hasConnection()) {
     logger.info('No saved connection, attempting auto-discovery...');
     const result = await connectionService.autoDiscoverAndConnect();
     if (result.success) {
       logger.info({ label: result.label }, 'Auto-discovery successful');
+      connectionEstablished = true;
     } else {
       logger.warn('Auto-discovery failed, bot will start without connection');
     }
+  } else {
+    connectionEstablished = true;
   }
 
   if (connectionService.hasConnection()) {
@@ -72,8 +77,24 @@ async function main(): Promise<void> {
   scheduleNextCheck();
 
   logger.info('Bot starting...');
-  bot.start({
-    onStart: () => logger.info('Bot started successfully'),
+  await bot.start({
+    onStart: async () => {
+      logger.info('Bot started successfully');
+      if (connectionEstablished) {
+        await sendConnectionStatus(bot);
+      } else {
+        for (const adminId of config.adminTelegramIds) {
+          try {
+            await bot.api.sendMessage(Number(adminId),
+              `**OpenClaw 连接未建立**\n\n未检测到 OpenClaw 运行环境。\n请使用 /connect 手动配置连接。`,
+              { parse_mode: 'Markdown' }
+            );
+          } catch {
+            // ignore
+          }
+        }
+      }
+    },
   });
 }
 

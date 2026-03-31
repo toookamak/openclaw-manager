@@ -1,10 +1,11 @@
 import { CliResult } from '../types/openclaw';
 
-export function parseStatus(output: string): { running: boolean; version?: string; uptime?: string; raw: string } {
+export function parseStatus(output: string): { running: boolean; version?: string; uptime?: string; pid?: string; raw: string } {
   const lines = output.split('\n');
   let running = false;
   let version: string | undefined;
   let uptime: string | undefined;
+  let pid: string | undefined;
 
   for (const line of lines) {
     const lower = line.toLowerCase();
@@ -16,9 +17,12 @@ export function parseStatus(output: string): { running: boolean; version?: strin
 
     const uptimeMatch = line.match(/uptime[:\s]+(.+)/i);
     if (uptimeMatch) uptime = uptimeMatch[1].trim();
+
+    const pidMatch = line.match(/pid[:\s]+(\d+)/i);
+    if (pidMatch) pid = pidMatch[1];
   }
 
-  return { running, version, uptime, raw: output };
+  return { running, version, uptime, pid, raw: output };
 }
 
 export function parseHealthJson(output: string): { healthy: boolean; gateway: boolean; details: string } {
