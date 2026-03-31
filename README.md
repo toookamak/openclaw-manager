@@ -27,9 +27,14 @@
 
 - `/start`：显示帮助信息
 - `/menu`：打开菜单模式选择
+- `/status`：状态查看（只读）
+- `/service`：服务控制（写操作）
+- `/admin`：管理授权（配置/ACL）
 - `/id`：查看当前 `chat_id` 和 `user_id`
 - `/ping`：检查 Bot 在线状态
 - `/cancel`：取消当前待处理操作
+- `/connect`：连接管理
+- `/about`：关于页面（版本信息）
 
 ### 状态与诊断
 
@@ -111,10 +116,14 @@ SQLite 数据库位于 `DATA_DIR/openclaw-manager.db`，当前表包括：
 ```text
 src/
   bot/         Telegram 命令、回调、菜单和格式化
+  bot/__tests__/    Jest 测试用例（callbacks, templates）
   config/      环境变量读取
   openclaw/    OpenClaw CLI 适配、输出解析、后端抽象、自动发现
+  openclaw/__tests__/  Jest 测试用例（parser）
   services/    业务服务层（12 个 service）
+  services/__tests__/  Jest 测试用例（services）
   storage/     SQLite 初始化与仓储（5 个 repo）
+  storage/__tests__/   Jest 测试用例（repos）
   types/       TypeScript 类型定义
 scripts/
   copy-assets.mjs  构建后复制运行时资产
@@ -233,6 +242,7 @@ docker compose up -d --build
 - 新增连接管理菜单：重新发现、重置连接
 - 新增 bot 测试用例（callbacks 和 templates）
 - 交互优化：回调处理点击反馈、错误模板化、结果刷新
+- 新增 /about 关于页面：展示 Bot 版本、OpenClaw 版本、连接方式、运行状态
 
 ## Roadmap
 
@@ -263,12 +273,12 @@ docker compose up -d --build
 | ✅ | 菜单扁平化 | /status /service /admin 三个独立命令 | 常规操作2步完成，危险操作二次确认 |
 | ✅ | 回复模板美化 | templates.ts 17个结构化模板 | 键值对/编号列表替代原始代码块 |
 | ✅ | 自动化测试 | Jest 框架，83 个测试用例 | 覆盖 parser/repos/services/bot |
+| ✅ | 交互优化 | 点击反馈 / 错误模板化 / 结果刷新 | 提升日常使用体验 |
+| ✅ | 关于页面 | /about 命令展示系统信息 | Bot 版本、OpenClaw 版本、连接信息 |
 | ⬜ | 自动化测试 | 单元测试 + 集成测试 | |
 | ⬜ | 备份定时任务 | 支持通过 Bot 配置自动备份周期 | |
 | ⬜ | 多语言 | 中/英文切换 | |
 | ⬜ | 版本管理 | 语义化版本号 + 更新日志 | package.json version 同步，CHANGELOG.md |
-| ⬜ | 关于页面 | OpenClaw 监控状态 + 版本号展示 | 独立入口，快速查看系统信息 |
-| ⬜ | 交互优化 | 点击反馈 / 错误模板化 / 结果刷新 / 分页查看 | 提升日常使用体验 |
 
 ## 当前限制
 
