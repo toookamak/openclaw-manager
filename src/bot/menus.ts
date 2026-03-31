@@ -52,7 +52,8 @@ export const menus = {
       .text('白名单', 'acl:run:whitelist').row()
       .text('允许当前群', 'acl:run:allow')
       .text('移除当前群', 'acl:run:remove').row()
-      .text('审计日志', 'menu:open:audit').row();
+      .text('审计日志', 'menu:open:audit')
+      .text('关于', 'about:refresh').row();
   },
 
   statusMenu(): InlineKeyboard {
@@ -225,6 +226,12 @@ export const menus = {
       .text('返回', 'menu:open:management').row();
   },
 
+  aboutMenu(): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('刷新', 'about:refresh').row()
+      .text('返回', 'menu:open:management').row();
+  },
+
   getMenuForScope(scope: string): InlineKeyboard {
     switch (scope) {
       case 'status-view': return this.statusViewMenu();
@@ -243,6 +250,7 @@ export const menus = {
       case 'restart': return this.restartMenu();
       case 'connection': return this.connectionStatusMenu();
       case 'audit': return this.auditMenu();
+      case 'about': return this.aboutMenu();
       default: return this.mainMenu();
     }
   },

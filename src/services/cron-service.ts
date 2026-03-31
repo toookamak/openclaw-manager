@@ -1,46 +1,34 @@
-import { formatOutput } from '../bot/formatters';
 import { openclawCommands } from '../openclaw/commands';
+import { templates } from '../bot/templates';
 
 export const cronService = {
   async status() {
     const res = await openclawCommands.cronStatus();
-    return formatOutput(res.output, '定时任务状态');
+    return templates.cronStatus(res.output);
   },
 
   async list() {
     const res = await openclawCommands.cronList();
-    if (res.jobs.length === 0) {
-      return { text: '未发现定时任务。', jobs: [] as typeof res.jobs };
-    }
-
-    const lines = res.jobs.map(j => {
-      const status = j.enabled ? '已启用' : '已禁用';
-      return `${status} \`${j.id}\` - ${j.name} (${j.schedule})`;
-    });
-
-    return {
-      text: `**定时任务列表**\n\n${lines.join('\n')}`,
-      jobs: res.jobs,
-    };
+    return templates.cronList(res.jobs);
   },
 
   async enable(jobId: string) {
     const res = await openclawCommands.cronEnable(jobId);
-    return res.code === 0 ? `已启用任务 \`${jobId}\`` : `启用失败：\n${formatOutput(res.output)}`;
+    return templates.genericResult(`启用任务 ${jobId}`, res.code, res.output, 'service-control');
   },
 
   async disable(jobId: string) {
     const res = await openclawCommands.cronDisable(jobId);
-    return res.code === 0 ? `已禁用任务 \`${jobId}\`` : `禁用失败：\n${formatOutput(res.output)}`;
+    return templates.genericResult(`禁用任务 ${jobId}`, res.code, res.output, 'service-control');
   },
 
   async run(jobId: string) {
     const res = await openclawCommands.cronRun(jobId);
-    return formatOutput(res.output, '执行结果');
+    return templates.genericResult(`执行任务 ${jobId}`, res.code, res.output, 'service-control');
   },
 
   async lastRun(jobId: string) {
     const res = await openclawCommands.cronRuns(jobId);
-    return formatOutput(res.output, '最近运行记录');
+    return templates.genericResult(`最近运行 ${jobId}`, res.code, res.output, 'service-control');
   },
 };

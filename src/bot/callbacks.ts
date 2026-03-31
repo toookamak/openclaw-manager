@@ -17,18 +17,7 @@ import { connectionService } from '../services/connection-service';
 import { auditLogRepo } from '../storage/repos/audit-log-repo';
 import { openclawCommands } from '../openclaw/commands';
 import { discoverDockerContainers, discoverLocalCli, discoverHttpEndpoints } from '../openclaw/discovery';
-
-function parseBackupList(output: string): string[] {
-  const lines = output.split('\n').filter(l => l.trim());
-  const archives: string[] = [];
-  for (const line of lines) {
-    const match = line.match(/(\S+\.tar\.gz|\S+\.zip|\S+\.bak)/i);
-    if (match) {
-      archives.push(match[1]);
-    }
-  }
-  return archives.length > 0 ? archives : lines.map(l => l.trim().split(/\s+/)[0]).filter(Boolean);
-}
+import { friendlyError } from './formatters';
 
 function isAdmin(ctx: BotContext): boolean {
   const userId = BigInt(ctx.from?.id ?? 0);
@@ -46,9 +35,20 @@ async function reply(ctx: BotContext, text: string, replyMarkup?: unknown): Prom
   }
 }
 
-async function ack(ctx: BotContext): Promise<void> {
+async function replyResult(ctx: BotContext, result: { text: string; keyboard: any }): Promise<void> {
   try {
-    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(result.text, {
+      parse_mode: 'Markdown',
+      reply_markup: result.keyboard,
+    });
+  } catch {
+    await ctx.reply(result.text, { parse_mode: 'Markdown', reply_markup: result.keyboard });
+  }
+}
+
+async function ack(ctx: BotContext, text = '处理中...'): Promise<void> {
+  try {
+    await ctx.answerCallbackQuery({ text });
   } catch {
     // ignore
   }
@@ -56,7 +56,7 @@ async function ack(ctx: BotContext): Promise<void> {
 
 export function registerCallbacks(bot: Bot<BotContext>): void {
   bot.callbackQuery(/^menu:open:(.+)$/, async (ctx: BotContext) => {
-    await ack(ctx);
+    await ack(ctx, '');
     const scope = ctx.match![1];
     await reply(ctx, `**${menus.getTitleForScope(scope)}**`, menus.getMenuForScope(scope));
   });
@@ -64,50 +64,57 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
   bot.callbackQuery(/^status:run:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
     const action = ctx.match![1];
-    let text = '';
+    let result: { text: string; keyboard: any };
     switch (action) {
       case 'overview':
-        text = await statusService.overview();
+        result = await statusService.overview();
         break;
       case 'full':
-        text = await statusService.full();
+        result = await statusService.full();
         break;
       case 'deep':
-        text = await statusService.deep();
+        result = await statusService.deep();
         break;
+      default:
+        return;
     }
-    await reply(ctx, text, menus.statusMenu());
+    await replyResult(ctx, result);
   });
 
   bot.callbackQuery(/^health:run:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
     const action = ctx.match![1];
-    let text = '';
+    let result: { text: string; keyboard: any };
     switch (action) {
       case 'gateway':
-        text = await healthService.gatewayHealth();
+        result = await healthService.gatewayHealth();
         break;
       case 'full':
-        text = await healthService.fullHealth();
+        result = await healthService.fullHealth();
         break;
       case 'errors':
-        text = await healthService.recentErrors();
+        result = await healthService.recentErrors();
         break;
+      default:
+        return;
     }
-    await reply(ctx, text, menus.healthMenu());
+    await replyResult(ctx, result);
   });
 
   bot.callbackQuery(/^model:run:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
     const action = ctx.match![1];
-    let text = '';
     switch (action) {
-      case 'current':
-        text = await modelService.current();
-        break;
-      case 'list':
-        await reply(ctx, await modelService.available(), menus.modelMenu());
+      case 'current': {
+        const result = await modelService.current();
+        await replyResult(ctx, result);
         return;
+      }
+      case 'list': {
+        const result = await modelService.available();
+        await replyResult(ctx, result);
+        return;
+      }
       case 'set': {
         const modelsRes = await openclawCommands.modelsList();
         if (modelsRes.models.length === 0) {
@@ -118,7 +125,6 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
         return;
       }
     }
-    await reply(ctx, text, menus.modelMenu());
   });
 
   bot.callbackQuery(/^model:confirm:set:(.+)$/, async (ctx: BotContext) => {
@@ -132,7 +138,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.modelsSet(model);
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'model:set', model, result, result === 'failed' ? res.output : null);
-    await reply(ctx, res.output, menus.modelMenu());
+    const text = result === 'success' ? `✅ 已切换模型: ${model}` : `❌ 切换失败\n\n${friendlyError(res.code, res.output)}`;
+    await reply(ctx, text, menus.modelMenu());
   });
 
   bot.callbackQuery(/^settings:run:(.+)$/, async (ctx: BotContext) => {
@@ -140,21 +147,27 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const action = ctx.match![1];
     let text = '';
     switch (action) {
-      case 'config':
-        text = await settingsService.configSummary();
-        break;
+      case 'config': {
+        const result = await settingsService.configSummary();
+        await replyResult(ctx, result);
+        return;
+      }
       case 'emoji': {
         const current = settingsService.getStateEmojiEnabled();
         settingsService.setStateEmojiEnabled(!current);
         text = !current ? '状态图标已开启。' : '状态图标已关闭。';
         break;
       }
-      case 'connection':
-        text = `**连接状态**\n\n${settingsService.connectionStatus()}`;
-        break;
-      case 'version':
-        text = await settingsService.openclawVersion();
-        break;
+      case 'connection': {
+        const result = await settingsService.connectionStatus();
+        await replyResult(ctx, result);
+        return;
+      }
+      case 'version': {
+        const result = await settingsService.openclawVersion();
+        await replyResult(ctx, result);
+        return;
+      }
       case 'alert_interval': {
         const current = settingsService.getAlertInterval();
         text = `当前告警间隔：${current} 秒\n\n请输入新的间隔（秒）：`;
@@ -172,19 +185,21 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
   bot.callbackQuery(/^conn:run:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
     const action = ctx.match![1];
-    let text = '';
+    let result: { text: string; keyboard: any };
     switch (action) {
       case 'channels':
-        text = await connectivityService.channelsProbe();
+        result = await connectivityService.channelsProbe();
         break;
       case 'provider':
-        text = await connectivityService.providerProbe();
+        result = await connectivityService.providerProbe();
         break;
       case 'usage':
-        text = await connectivityService.usage();
+        result = await connectivityService.usage();
         break;
+      default:
+        return;
     }
-    await reply(ctx, text, menus.connectivityMenu());
+    await replyResult(ctx, result);
   });
 
   bot.callbackQuery(/^doctor:run:(.+)$/, async (ctx: BotContext) => {
@@ -195,7 +210,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
       return;
     }
 
-    await reply(ctx, await doctorService.diagnose(), menus.doctorMenu());
+    const result = await doctorService.diagnose();
+    await replyResult(ctx, result);
   });
 
   bot.callbackQuery(/^doctor:run:repair$/, async (ctx: BotContext) => {
@@ -208,20 +224,22 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.doctorRepair();
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'doctor:repair', null, result, result === 'failed' ? res.output : null);
-    const e = res.code === 0 ? '✅' : '❌';
-    await reply(ctx, `${e} Doctor 修复\n\n${res.output}`, menus.doctorMenu());
+    const text = result === 'success' ? `✅ Doctor 修复成功\n\n${res.output}` : `❌ Doctor 修复失败\n\n${friendlyError(res.code, res.output)}`;
+    await reply(ctx, text, menus.doctorMenu());
   });
 
   bot.callbackQuery(/^cron:run:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
     const action = ctx.match![1];
     switch (action) {
-      case 'status':
-        await reply(ctx, await cronService.status(), menus.cronMenu());
+      case 'status': {
+        const result = await cronService.status();
+        await replyResult(ctx, result);
         return;
+      }
       case 'list': {
         const result = await cronService.list();
-        await reply(ctx, result.text, result.jobs.length > 0 ? menus.cronJobsMenu(result.jobs) : menus.cronMenu());
+        await replyResult(ctx, result);
         return;
       }
     }
@@ -269,28 +287,31 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     }
     const result = code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), `cron:${action}`, jobId, result, result === 'failed' ? output : null);
-    await reply(ctx, output, menus.cronJobMenu(jobId));
+    const text = result === 'success' ? output : friendlyError(code, output);
+    await reply(ctx, text, menus.cronJobMenu(jobId));
   });
 
   bot.callbackQuery(/^cron:run:lastrun:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
-    const jobId = ctx.match![1];
-    await reply(ctx, await cronService.lastRun(jobId), menus.cronJobMenu(jobId));
+    const result = await cronService.lastRun(ctx.match![1]);
+    await replyResult(ctx, result);
   });
 
   bot.callbackQuery(/^logs:run:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
     const action = ctx.match![1];
-    let text = '';
+    let result: { text: string; keyboard: any };
     switch (action) {
       case 'recent':
-        text = await logService.recentLogs();
+        result = await logService.recentLogs();
         break;
       case 'errors':
-        text = await logService.errorSummary();
+        result = await logService.errorSummary();
         break;
+      default:
+        return;
     }
-    await reply(ctx, text, menus.logsMenu());
+    await replyResult(ctx, result);
   });
 
   bot.callbackQuery(/^backup:run:(.+)$/, async (ctx: BotContext) => {
@@ -301,34 +322,23 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     }
 
     const action = ctx.match![1];
-    let res: { code: number; output: string };
     switch (action) {
       case 'create': {
-        res = await openclawCommands.backupCreate();
-        const result = res.code === 0 ? 'success' : 'failed';
-        auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:create', null, result, result === 'failed' ? res.output : null);
-        break;
+        const result = await backupService.create();
+        auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:create', null, 'success', null);
+        await replyResult(ctx, result);
+        return;
       }
       case 'list': {
-        const listRes = await openclawCommands.backupList();
-        if (listRes.code === 0 && listRes.output) {
-          const archives = parseBackupList(listRes.output);
-          if (archives.length > 0) {
-            await reply(ctx, '**备份列表**\n\n选择备份进行操作：', menus.backupListMenu(archives));
-            return;
-          }
-        }
-        await reply(ctx, listRes.output || '未找到备份文件。', menus.backupMenu());
+        const result = await backupService.list();
+        await replyResult(ctx, result);
         return;
       }
       case 'restore': {
         await reply(ctx, '确认执行恢复操作？恢复将覆盖当前数据。', menus.confirmMenu('backup:confirm:restore', 'menu:open:backup'));
         return;
       }
-      default:
-        res = { code: -1, output: 'Unknown action' };
     }
-    await reply(ctx, res.output, menus.backupMenu());
   });
 
   bot.callbackQuery(/^backup:menu:(.+)$/, async (ctx: BotContext) => {
@@ -340,11 +350,9 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
   bot.callbackQuery(/^backup:verify:(.+)$/, async (ctx: BotContext) => {
     await ack(ctx);
     const archive = decodeURIComponent(ctx.match![1]);
-    const res = await openclawCommands.backupVerify(archive);
-    const result = res.code === 0 ? 'success' : 'failed';
-    auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:verify', archive, result, result === 'failed' ? res.output : null);
-    const e = res.code === 0 ? '✅' : '❌';
-    await reply(ctx, `${e} 备份校验\n\n${res.output}`, menus.backupItemMenu(archive));
+    const result = await backupService.verify(archive);
+    auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:verify', archive, 'success', null);
+    await replyResult(ctx, result);
   });
 
   bot.callbackQuery(/^backup:confirm:restore$/, async (ctx: BotContext) => {
@@ -371,8 +379,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.backupRestore(archive);
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:restore', archive, result, result === 'failed' ? res.output : null);
-    const e = res.code === 0 ? '✅' : '❌';
-    await reply(ctx, `${e} 备份恢复\n\n${res.output}`, menus.backupMenu());
+    const text = result === 'success' ? `✅ 备份恢复成功\n\n${res.output}` : `❌ 备份恢复失败\n\n${friendlyError(res.code, res.output)}`;
+    await reply(ctx, text, menus.backupMenu());
   });
 
   bot.callbackQuery(/^backup:delete:(.+)$/, async (ctx: BotContext) => {
@@ -385,8 +393,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     const res = await openclawCommands.backupDelete(archive);
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:delete', archive, result, result === 'failed' ? res.output : null);
-    const e = res.code === 0 ? '✅' : '❌';
-    await reply(ctx, `${e} 备份删除\n\n${res.output}`, menus.backupMenu());
+    const text = result === 'success' ? `✅ 备份删除成功\n\n${res.output}` : `❌ 备份删除失败\n\n${friendlyError(res.code, res.output)}`;
+    await reply(ctx, text, menus.backupMenu());
   });
 
   bot.callbackQuery(/^acl:run:(.+)$/, async (ctx: BotContext) => {
@@ -403,7 +411,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
         break;
       case 'status': {
         const chatId = BigInt(ctx.chat?.id ?? 0);
-        text = approvalService.isWhitelisted(chatId) ? '当前群已授权。' : '当前群未授权。';
+        const whitelisted = approvalService.isWhitelisted(chatId);
+        text = `**群授权状态**\n\n当前群状态: ${whitelisted ? '✅ 已授权' : '❌ 未授权'}`;
         break;
       }
       case 'request': {
@@ -431,9 +440,9 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
         const list = approvalService.listWhitelist();
         if (list.length === 0) {
           text = '白名单为空。';
-          break;
+        } else {
+          text = `**白名单**\n\n${list.map(entry => `- ${entry.chat_title ?? '私聊'} (\`${entry.chat_id}\`)`).join('\n')}`;
         }
-        text = `**白名单**\n\n${list.map(entry => `- \`${entry.chat_id}\` - ${entry.chat_title ?? '未知'}`).join('\n')}`;
         break;
       }
       case 'allow': {
@@ -444,7 +453,7 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
         const chatId = BigInt(ctx.chat?.id ?? 0);
         const chatTitle = ctx.chat && 'title' in ctx.chat ? (ctx.chat as { title?: string }).title ?? null : null;
         approvalService.addWhitelist(chatId, ctx.chat?.type ?? 'group', chatTitle);
-        text = '已加入白名单。';
+        text = '✅ 已加入白名单。';
         break;
       }
       case 'remove': {
@@ -454,7 +463,7 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
         }
         const chatId = BigInt(ctx.chat?.id ?? 0);
         approvalService.removeWhitelist(chatId);
-        text = '已从白名单移除。';
+        text = '✅ 已从白名单移除。';
         break;
       }
     }
@@ -469,14 +478,14 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     try {
       approvalService.approveGroup(chatId);
       auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'acl:approve', String(chatId), 'success', null);
-      await reply(ctx, '已批准授权。', menus.aclMenu());
+      await reply(ctx, '✅ 已批准授权。', menus.aclMenu());
     } catch (err) {
       try {
         auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'acl:approve', String(chatId), 'failed', String(err));
       } catch {
         // audit log failure should not block error reply
       }
-      await reply(ctx, '批准授权失败，请重试。', menus.aclMenu());
+      await reply(ctx, '❌ 批准授权失败，请重试。', menus.aclMenu());
     }
   });
 
@@ -487,14 +496,14 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     try {
       approvalService.rejectGroup(chatId);
       auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'acl:reject', String(chatId), 'success', null);
-      await reply(ctx, '已拒绝授权。', menus.aclMenu());
+      await reply(ctx, '✅ 已拒绝授权。', menus.aclMenu());
     } catch (err) {
       try {
         auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'acl:reject', String(chatId), 'failed', String(err));
       } catch {
         // audit log failure should not block error reply
       }
-      await reply(ctx, '拒绝授权失败，请重试。', menus.aclMenu());
+      await reply(ctx, '❌ 拒绝授权失败，请重试。', menus.aclMenu());
     }
   });
 
@@ -529,7 +538,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     }
     const result = res.code === 0 ? 'success' : 'failed';
     auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), `restart:${target}`, null, result, result === 'failed' ? res.output : null);
-    await reply(ctx, res.output, menus.restartMenu());
+    const text = result === 'success' ? `✅ 重启成功\n\n${res.output}` : `❌ 重启失败\n\n${friendlyError(res.code, res.output)}`;
+    await reply(ctx, text, menus.restartMenu());
   });
 
   bot.callbackQuery(/^connect:setup:(.+)$/, async (ctx: BotContext) => {
@@ -643,6 +653,57 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     }
   });
 
+  bot.callbackQuery(/^about:(.+)$/, async (ctx: BotContext) => {
+    await ack(ctx);
+    const pkg = require('../../package.json');
+    const botVersion = pkg.version || 'v1.0.0';
+    const profile = connectionService.getProfile();
+
+    let connectionType = '未配置';
+    let connectionDetail = '-';
+    if (profile) {
+      switch (profile.type) {
+        case 'local-cli':
+          connectionType = '本机 CLI';
+          connectionDetail = (profile as { command?: string }).command ?? 'openclaw';
+          break;
+        case 'docker-cli':
+          connectionType = 'Docker CLI';
+          connectionDetail = (profile as { container: string }).container;
+          break;
+        case 'http-api':
+          connectionType = 'HTTP API';
+          connectionDetail = (profile as { baseUrl: string }).baseUrl;
+          break;
+      }
+    }
+
+    try {
+      const status = await openclawCommands.status();
+      const text = `**关于 OpenClaw Manager**
+
+Bot 版本: ${botVersion}
+OpenClaw 版本: ${status.version ?? '未知'}
+运行状态: ${status.running ? '✅ 运行中' : '❌ 异常'}
+PID: ${status.pid ?? '未知'}
+运行时长: ${status.uptime ?? '未知'}
+
+连接方式: ${connectionType}
+连接详情: ${connectionDetail}`;
+      await reply(ctx, text, menus.aboutMenu());
+    } catch {
+      const text = `**关于 OpenClaw Manager**
+
+Bot 版本: ${botVersion}
+OpenClaw 版本: 无法获取
+运行状态: ❌ 异常
+
+连接方式: ${connectionType}
+连接详情: ${connectionDetail}`;
+      await reply(ctx, text, menus.aboutMenu());
+    }
+  });
+
   bot.on('message:text', async (ctx: BotContext) => {
     const pending = ctx.session.pendingAction;
     if (!pending || pending.expiresAt < Date.now()) {
@@ -679,8 +740,8 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
       const res = await openclawCommands.backupRestore(text);
       const result = res.code === 0 ? 'success' : 'failed';
       auditLogRepo.log(BigInt(ctx.from?.id ?? 0), BigInt(ctx.chat?.id ?? 0), 'backup:restore', text, result, result === 'failed' ? res.output : null);
-      const e = res.code === 0 ? '✅' : '❌';
-      await ctx.reply(`${e} 备份恢复\n\n${res.output}`, { reply_markup: menus.backupMenu() });
+      const msg = result === 'success' ? `✅ 备份恢复成功\n\n${res.output}` : `❌ 备份恢复失败\n\n${friendlyError(res.code, res.output)}`;
+      await ctx.reply(msg, { reply_markup: menus.backupMenu(), parse_mode: 'Markdown' });
       return;
     }
 

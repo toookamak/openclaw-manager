@@ -124,29 +124,29 @@ jest.mock('../../services/connection-service', () => ({
 describe('statusService', () => {
   it('returns overview', async () => {
     const result = await statusService.overview();
-    expect(result).toContain('状态概览');
+    expect(result.text).toContain('状态概览');
   });
 
   it('returns full status', async () => {
     const result = await statusService.full();
-    expect(result).toContain('完整状态');
+    expect(result.text).toContain('运行状态');
   });
 
   it('returns deep status', async () => {
     const result = await statusService.deep();
-    expect(result).toContain('深度状态');
+    expect(result.text).toContain('运行状态');
   });
 });
 
 describe('healthService', () => {
   it('returns gateway health', async () => {
     const result = await healthService.gatewayHealth();
-    expect(result).toContain('Gateway 健康');
+    expect(result.text).toContain('Gateway 健康');
   });
 
   it('returns full health', async () => {
     const result = await healthService.fullHealth();
-    expect(result).toContain('全量健康');
+    expect(result.text).toContain('全量健康');
   });
 
   it('returns recent errors', async () => {
@@ -158,13 +158,13 @@ describe('healthService', () => {
 describe('modelService', () => {
   it('returns current model', async () => {
     const result = await modelService.current();
-    expect(result).toContain('当前模型');
+    expect(result.text).toContain('当前模型');
   });
 
   it('returns available models', async () => {
     const result = await modelService.available();
-    expect(result).toContain('gpt-4o');
-    expect(result).toContain('claude-3');
+    expect(result.text).toContain('gpt-4o');
+    expect(result.text).toContain('claude-3');
   });
 
   it('sets model', async () => {
@@ -176,62 +176,61 @@ describe('modelService', () => {
 describe('doctorService', () => {
   it('diagnoses', async () => {
     const result = await doctorService.diagnose();
-    expect(result).toContain('Doctor 诊断');
+    expect(result.text).toContain('Doctor 诊断');
   });
 
   it('repairs', async () => {
     const result = await doctorService.repair();
-    expect(result).toContain('Doctor 修复');
+    expect(result.text).toContain('Doctor 修复');
   });
 });
 
 describe('cronService', () => {
   it('returns status', async () => {
     const result = await cronService.status();
-    expect(result).toContain('定时任务状态');
+    expect(result.text).toContain('定时任务状态');
   });
 
   it('lists jobs', async () => {
     const result = await cronService.list();
-    expect(result.jobs).toHaveLength(1);
-    expect(result.text).toContain('job-01');
+    expect(result.text).toContain('定时任务');
   });
 
   it('enables job', async () => {
     const result = await cronService.enable('job-01');
-    expect(result).toContain('已启用');
+    expect(result.text).toContain('启用任务');
   });
 
   it('disables job', async () => {
     const result = await cronService.disable('job-01');
-    expect(result).toContain('已禁用');
+    expect(result.text).toContain('禁用任务');
   });
 
   it('runs job', async () => {
     const result = await cronService.run('job-01');
-    expect(result).toContain('执行结果');
+    expect(result.text).toContain('执行任务');
   });
 
   it('gets last run', async () => {
     const result = await cronService.lastRun('job-01');
-    expect(result).toContain('最近运行记录');
+    expect(result.text).toContain('最近运行');
   });
 });
 
 describe('backupService', () => {
   it('creates backup', async () => {
     const result = await backupService.create();
-    expect(result).toContain('创建备份');
+    expect(result.text).toContain('创建备份');
   });
 
   it('lists backups', async () => {
     const result = await backupService.list();
-    expect(result).toContain('备份列表');
+    expect(result.text).toContain('备份列表');
   });
 
   it('verifies backup', async () => {
     const result = await backupService.verify('backup.tar.gz');
-    expect(result).toContain('校验');
+    expect(result.text).toContain('校验备份');
   });
 });
 
@@ -250,7 +249,7 @@ describe('restartService', () => {
 describe('settingsService', () => {
   it('returns config summary', async () => {
     const result = await settingsService.configSummary();
-    expect(result).toContain('配置摘要');
+    expect(result.text).toContain('配置摘要');
   });
 
   it('gets and sets emoji enabled', () => {
@@ -266,26 +265,26 @@ describe('settingsService', () => {
     expect(settingsRepo.set).toHaveBeenCalledWith('alert_check_interval_sec', '300');
   });
 
-  it('returns connection status', () => {
-    const result = settingsService.connectionStatus();
-    expect(result).toContain('local-cli');
+  it('returns connection status', async () => {
+    const result = await settingsService.connectionStatus();
+    expect(result.text).toContain('本机 CLI');
   });
 });
 
 describe('connectivityService', () => {
   it('probes channels', async () => {
     const result = await connectivityService.channelsProbe();
-    expect(result).toContain('通道连通性');
+    expect(result.text).toContain('通道连通性');
   });
 
   it('probes provider', async () => {
     const result = await connectivityService.providerProbe();
-    expect(result).toContain('Provider 连通性');
+    expect(result.text).toContain('Provider 连通性');
   });
 
   it('gets usage', async () => {
     const result = await connectivityService.usage();
-    expect(result).toContain('Usage 状态');
+    expect(result.text).toContain('Usage 状态');
   });
 });
 

@@ -1,22 +1,33 @@
-import { emoji, formatOutput } from '../bot/formatters';
 import { openclawCommands } from '../openclaw/commands';
+import { templates } from '../bot/templates';
 
 export const backupService = {
   async create() {
     const res = await openclawCommands.backupCreate();
-    const e = res.code === 0 ? emoji('success') : emoji('fail');
-    return `${e ? `${e} ` : ''}${formatOutput(res.output, '创建备份')}`;
+    return templates.genericResult('创建备份', res.code, res.output, 'service-control');
   },
 
   async list() {
     const res = await openclawCommands.backupList();
-    if (!res.output) return '未找到备份文件。';
-    return formatOutput(res.output, '备份列表');
+    if (!res.output) return templates.backupList([]);
+    const archives = parseBackupList(res.output);
+    return templates.backupList(archives);
   },
 
   async verify(archive: string) {
     const res = await openclawCommands.backupVerify(archive);
-    const e = res.code === 0 ? emoji('success') : emoji('fail');
-    return `${e ? `${e} ` : ''}${formatOutput(res.output, '校验备份')}`;
+    return templates.genericResult(`校验备份 ${archive}`, res.code, res.output, 'service-control');
   },
 };
+
+function parseBackupList(output: string): string[] {
+  const lines = output.split('\n').filter(l => l.trim());
+  const archives: string[] = [];
+  for (const line of lines) {
+    const match = line.match(/(\S+\.tar\.gz|\S+\.zip|\S+\.bak)/i);
+    if (match) {
+      archives.push(match[1]);
+    }
+  }
+  return archives.length > 0 ? archives : lines.map(l => l.trim().split(/\s+/)[0]).filter(Boolean);
+}

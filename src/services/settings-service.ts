@@ -1,18 +1,18 @@
-import { formatOutput } from '../bot/formatters';
+import { InlineKeyboard } from 'grammy';
 import { openclawCommands } from '../openclaw/commands';
-import { settingsRepo } from '../storage/repos/settings-repo';
+import { templates } from '../bot/templates';
 import { connectionService } from './connection-service';
 import { config } from '../config/env';
 
 export const settingsService = {
   async configSummary() {
     const res = await openclawCommands.configFile();
-    return formatOutput(res.output, '配置摘要');
+    return templates.settingsConfig(res.output);
   },
 
   async configGet(path: string) {
     const res = await openclawCommands.configGet(path);
-    return formatOutput(res.output);
+    return templates.genericResult('配置获取', res.code, res.output, 'management');
   },
 
   getStateEmojiEnabled(): boolean {
@@ -33,24 +33,35 @@ export const settingsService = {
     settingsRepo.set('alert_check_interval_sec', String(seconds));
   },
 
-  connectionStatus(): string {
+  async connectionStatus() {
     const profile = connectionService.getProfile();
-    if (!profile) return '未配置连接。';
+    if (!profile) return templates.connectionStatus('未配置', '未检测到连接，请使用 /connect 配置。');
+    let typeLabel = '';
+    let detail = '';
     switch (profile.type) {
       case 'local-cli':
-        return `类型: local-cli\n命令: ${(profile as { command?: string }).command ?? 'openclaw'}`;
+        typeLabel = '本机 CLI';
+        detail = (profile as { command?: string }).command ?? 'openclaw';
+        break;
       case 'docker-cli':
-        return `类型: docker-cli\n容器: ${(profile as { container: string }).container}`;
+        typeLabel = 'Docker CLI';
+        detail = (profile as { container: string }).container;
+        break;
       case 'http-api':
-        return `类型: http-api\n地址: ${(profile as { baseUrl: string }).baseUrl}`;
-      default:
-        return '未知类型。';
+        typeLabel = 'HTTP API';
+        detail = (profile as { baseUrl: string }).baseUrl;
+        break;
     }
+    return templates.connectionStatus(typeLabel, detail);
   },
 
-  async openclawVersion(): Promise<string> {
+  async openclawVersion() {
     const res = await openclawCommands.status();
-    if (res.version) return `OpenClaw 版本: ${res.version}`;
-    return res.code === 0 ? '版本信息不可用。' : '无法获取版本信息。';
+    if (res.version) {
+      return templates.genericResult('OpenClaw 版本', 0, `版本: ${res.version}`, 'management');
+    }
+    return templates.genericResult('OpenClaw 版本', res.code, res.code === 0 ? '版本信息不可用。' : '无法获取版本信息。', 'management');
   },
 };
+
+import { settingsRepo } from '../storage/repos/settings-repo';

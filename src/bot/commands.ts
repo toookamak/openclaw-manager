@@ -112,4 +112,11 @@ export function registerCommands(bot: Bot<BotContext>): void {
     ctx.session.pendingAction = undefined;
     await ctx.reply('✅ 已取消当前操作。');
   });
+
+  bot.command('about', async (ctx: BotContext) => {
+    await ctx.reply('**关于 OpenClaw Manager**', {
+      parse_mode: 'Markdown',
+      reply_markup: menus.aboutMenu(),
+    });
+  });
 }
